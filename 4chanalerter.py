@@ -56,7 +56,8 @@ def getThreadContent(threadid, input_strings, ua):
                 archiver.close()
 
                 count+=1
-                print("match on: " + item.decode('utf-8'))
+                if (debug):
+                    print("match on: " + item.decode('utf-8'))
 
                 if titleIsSet is 0:
                     htmlbody += "<h2>Matches found on thread <a href=\"https://boards.4chan.org/b/thread/" + threadid + "\">" + threadid + "</a>:</h2>"
