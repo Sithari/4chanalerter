@@ -16,8 +16,11 @@ def getThreadIds(ua):
     ids = list()
     opener = urllib2.build_opener()
     opener.addheaders = [('User-agent', ua)]
-    response = opener.open('https://boards.4chan.org/b/')
-
+    try:
+        response = opener.open('https://boards.4chan.org/b/')
+    except urllib2.URLError:
+        print("Error: Do you have internets?")
+        return False
     #print("Response:" + response.read())
 
     soup = BeautifulSoup(response)
@@ -40,14 +43,28 @@ def getThreadContent(threadid, input_strings, ua):
 
     opener = urllib2.build_opener()
     opener.addheaders = [('User-agent', ua)]
-    response = opener.open('https://boards.4chan.org/b/thread/' + threadid)
+    try:
+        response = opener.open('https://boards.4chan.org/b/thread/' + threadid, timeout = 10)
+    except urllib2.HTTPError as e:
+        if e.code == 404:
+            print("Page 404ed. Skipping..")
+            return
+        else:
+            print("Error occured." + str(e.code))
+
+    #debug_writer = open("debug_threadid.txt", 'w')
+    #debug_writer.write(response.read())
+    #debug_writer.close()
+
 
     soup = BeautifulSoup(response)
     prettyHTML=soup.prettify()  #prettify the html
 
+
     for item in prettyHTML.split("\n"):
         for string in input_strings:
             if string in item.decode('utf-8'):
+                count+=1
                 current_date = datetime.now().strftime("%m-%d-%Y")
                 if not os.path.exists(current_date):
                     os.makedirs(current_date)
@@ -55,7 +72,6 @@ def getThreadContent(threadid, input_strings, ua):
                 archiver.write(prettyHTML)
                 archiver.close()
 
-                count+=1
                 if (debug):
                     print("match on: " + item.decode('utf-8'))
 
@@ -64,9 +80,9 @@ def getThreadContent(threadid, input_strings, ua):
                     titleIsSet=1
                 htmlbody += "\n<p>For string <b>" + string + "</b>:<br>"
                 try:
-                    htmlbody += "The line is: " + item.encode('utf-8') + "<br>"
+                    htmlbody += "The line is: " + item.encode('utf-8').replace(string, "<b>" + string + "</b>") + "<br>"
                 except UnicodeDecodeError:
-                    htmlbody += "The line is: " + item.decode('utf-8') + "<br>"
+                    htmlbody += "The line is: " + item.decode('utf-8').replace(string, "<b>" + string + "</b>") + "<br>"
 
 
 def sendMail(from_address, from_address_pswd, to_address, now):
@@ -86,7 +102,7 @@ def sendMail(from_address, from_address_pswd, to_address, now):
 
     # Prepare actual message
 
-    part2 = MIMEText(htmlbody, 'html')
+    part2 = MIMEText(htmlbody.encode('utf-8'), 'html')
     # Attach parts into message container.
     msg.attach(part2)
     # Send the mail
@@ -126,11 +142,13 @@ ua = UserAgent()
 while True:
     count = 0
     random_ua = ua.random  # new UA every 10 minutes
-    if(debug):
-        print("Current UA: " + random_ua)
 
     now = datetime.now().strftime('%Y-%m-%d %I:%M:%S %p')
     print ("Running at time %s" % now)
+
+    if(debug):
+        print("Current UA: " + random_ua)
+
 
     htmlbody = """\
                 <html>
@@ -139,25 +157,28 @@ while True:
                 """
 
     threadids = getThreadIds(random_ua)  # Get the thread IDs on 4chan/b
+    if type(threadids) is list:
+        for threadid in threadids:
+            if (debug):
+                print ("Current id is: " + threadid[1:])
+            getThreadContent(threadid[1:], input_strings, random_ua)  # add content to htmlbody
 
-    for threadid in threadids:
+        htmlbody += """\
+                    </p>
+                    </body>
+                    </html>
+                    """
+
         if (debug):
-            print ("Current id is: " + threadid[1:])
-        getThreadContent(threadid[1:], input_strings, random_ua)  # add content to htmlbody
+            print ("html body " + htmlbody)
+        if count is 0:
+            print("No matches found. No email being sent")
+        else:
+            print("Found " + str(count) + " matches")
+            sendMail(from_email, from_emailpw, to_email, now) #send the report via email
 
-    htmlbody += """\
-                </p>
-                </body>
-                </html>
-                """
-
-    if (debug):
-        print ("html body " + htmlbody)
-    if count is 0:
-        print("No matches found. No email being sent")
     else:
-        print("Found " + str(count) + " matches")
-        sendMail(from_email, from_emailpw, to_email, now) #send the report via email
+        print "Count not reach site."
 
-    print("Sleeping for 10 minutes")
-    sleep(600) # delays for 10 minutes
+    print("Sleeping for 5 minutes")
+    sleep(300) # delays for 5 minutes
